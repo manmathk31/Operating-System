@@ -22,281 +22,356 @@ Below is the complete C++ source code for the simulator.
 
 ```cpp
 
-#include <bits/stdc++.h>
+#include <iostream>
+#include <vector>
+#include <sstream>
+#include <iomanip>
+#include <limits>
 using namespace std;
 
-/* ---------------------------------------------------------
-   PAGE REPLACEMENT SIMULATOR (Menu Driven)
+// ------------------------------------------------------------
+// Utility Functions
+// ------------------------------------------------------------
+void printLine() {
+    cout << "------------------------------------------------------------\n";
+}
 
-   - Presents detailed, instructional, user-friendly output.
-   - Shows each step clearly: reference number, hit/fault,
-     eviction, frame status.
-   - No unnecessary symbols or emojis.
-   --------------------------------------------------------- */
-
+// Displays current frame state
 void printFrames(const vector<int>& frames) {
-    cout << "Frames: [ ";
+    cout << "| ";
     for (int f : frames) {
-        if (f == -1) cout << "_ ";
+        if (f == -1) cout << "- ";
         else cout << f << " ";
     }
-    cout << "]";
+    cout << " ";
 }
 
-/* ======================== FIFO ======================== */
-int simulateFIFO(const vector<int>& refs, int frames_count) {
-    cout << "\n------------------------------------------------------------\n";
-    cout << "                     FIFO PAGE REPLACEMENT                  \n";
-    cout << "------------------------------------------------------------\n";
-    cout << "Explanation: The page that entered first is removed first.\n\n";
+// ------------------------------------------------------------
+// FIFO Algorithm
+// ------------------------------------------------------------
+int simulateFIFO(const vector<int>& refs, int framesCount) {
+    printLine();
+    cout << "Starting FIFO Simulation...\n";
+    printLine();
 
-    vector<int> frames(frames_count, -1);
-    queue<int> q;
-    unordered_set<int> present;
-    int faults = 0;
+    cout << "Reference String: ";
+    for (int r : refs) cout << r << " ";
+    cout << "\nTotal Frames: " << framesCount << "\n\n";
 
-    for (int i = 0; i < refs.size(); i++) {
-        int page = refs[i];
+    printLine();
+    cout << "Step-by-step Page Frame Updates:\n\n";
+    cout << "Ref   Frame Status                 Page Fault?\n";
+    printLine();
 
-        cout << "Reference " << i + 1 << " -> Page " << page << "\n";
+    vector<int> frames(framesCount, -1);
+    int pointer = 0, faults = 0;
 
-        if (present.count(page)) {
-            cout << "Result: HIT (page already in memory)\n";
+    for (int r : refs) {
+        bool hit = false;
+
+        for (int f : frames) {
+            if (f == r) {
+                hit = true;
+                break;
+            }
+        }
+
+        cout << left << setw(5) << r;
+
+        if (!hit) {
+            cout << " ";
+            frames[pointer] = r;
+            pointer = (pointer + 1) % framesCount;
+            faults++;
+
+            printFrames(frames);
+            cout << "    YES (Page Loaded)\n";
+        } else {
+            printFrames(frames);
+            cout << "    NO  (Already in memory)\n";
+        }
+    }
+
+    printLine();
+    cout << "Simulation Results (FIFO)\n";
+    printLine();
+    cout << "Total Page Faults: " << faults << "\n";
+    cout << "Total References : " << refs.size() << "\n";
+    cout << "Fault Rate       : " << fixed << setprecision(2)
+         << (faults * 100.0 / refs.size()) << "%\n\n";
+
+    cout << "FIFO Explanation:\n";
+    cout << "FIFO replaces the oldest loaded page first, regardless of\n";
+    cout << "how frequently or recently it is used. This often leads to\n";
+    cout << "unnecessary faults and may suffer from Belady's anomaly.\n";
+
+    printLine();
+    cout << "End of Simulation.\n";
+    cout << "You may run another algorithm from the menu.\n";
+    printLine();
+
+    return faults;
+}
+
+// ------------------------------------------------------------
+// LRU Algorithm
+// ------------------------------------------------------------
+int simulateLRU(const vector<int>& refs, int framesCount) {
+    printLine();
+    cout << "Starting LRU Simulation...\n";
+    printLine();
+
+    cout << "Reference String: ";
+    for (int r : refs) cout << r << " ";
+    cout << "\nTotal Frames: " << framesCount << "\n\n";
+
+    printLine();
+    cout << "Step-by-step Page Frame Updates:\n\n";
+    cout << "Ref   Frame Status                 Page Fault?\n";
+    printLine();
+
+    vector<int> frames(framesCount, -1);
+    vector<int> lastUsed(framesCount, -1);
+    int faults = 0, time = 0;
+
+    for (int r : refs) {
+        time++;
+        bool hit = false;
+        int hitIndex = -1;
+
+        // Check hit
+        for (int i = 0; i < framesCount; i++) {
+            if (frames[i] == r) {
+                hit = true;
+                hitIndex = i;
+                break;
+            }
+        }
+
+        cout << left << setw(5) << r;
+
+        if (hit) {
+            lastUsed[hitIndex] = time;
+            printFrames(frames);
+            cout << "    NO  (Already in memory)\n";
         } else {
             faults++;
-            cout << "Result: PAGE FAULT\n";
 
-            if (present.size() < frames_count) {
-                for (int j = 0; j < frames_count; j++) {
-                    if (frames[j] == -1) {
-                        frames[j] = page;
-                        break;
+            // Find empty frame
+            int replaceIndex = -1;
+            for (int i = 0; i < framesCount; i++) {
+                if (frames[i] == -1) {
+                    replaceIndex = i;
+                    break;
+                }
+            }
+
+            // If no empty frame → replace LRU
+            if (replaceIndex == -1) {
+                int lruTime = numeric_limits<int>::max();
+                for (int i = 0; i < framesCount; i++) {
+                    if (lastUsed[i] < lruTime) {
+                        lruTime = lastUsed[i];
+                        replaceIndex = i;
                     }
                 }
-                present.insert(page);
-                q.push(page);
-                cout << "Action: Page loaded into an empty frame.\n";
+
+                cout << " ";
+                int replaced = frames[replaceIndex];
+                frames[replaceIndex] = r;
+                lastUsed[replaceIndex] = time;
+
+                printFrames(frames);
+                cout << "    YES (Replaced LRU: " << replaced << ")\n";
             } else {
-                int victim = q.front();
-                q.pop();
-                cout << "Action: Evicted page " << victim << " (oldest page in memory).\n";
+                frames[replaceIndex] = r;
+                lastUsed[replaceIndex] = time;
+                printFrames(frames);
+                cout << "    YES (Loaded into empty frame)\n";
+            }
+        }
+    }
 
-                for (int j = 0; j < frames_count; j++) {
-                    if (frames[j] == victim) {
-                        frames[j] = page;
+    printLine();
+    cout << "Simulation Results (LRU)\n";
+    printLine();
+    cout << "Total Page Faults: " << faults << "\n";
+    cout << "Total References : " << refs.size() << "\n";
+    cout << "Fault Rate       : " << fixed << setprecision(2)
+         << (faults * 100.0 / refs.size()) << "%\n\n";
+
+    cout << "LRU Explanation:\n";
+    cout << "LRU replaces the page that has not been used for the longest\n";
+    cout << "time. It performs well with workloads showing locality but\n";
+    cout << "may fault more when memory access patterns change suddenly.\n";
+
+    printLine();
+    cout << "End of Simulation.\n";
+    cout << "You may run another algorithm from the menu.\n";
+    printLine();
+
+    return faults;
+}
+
+// ------------------------------------------------------------
+// Optimal Algorithm
+// ------------------------------------------------------------
+int simulateOptimal(const vector<int>& refs, int framesCount) {
+    printLine();
+    cout << "Starting Optimal Simulation...\n";
+    printLine();
+
+    cout << "Reference String: ";
+    for (int r : refs) cout << r << " ";
+    cout << "\nTotal Frames: " << framesCount << "\n\n";
+
+    printLine();
+    cout << "Step-by-step Page Frame Updates:\n\n";
+    cout << "Ref   Frame Status                 Page Fault?\n";
+    printLine();
+
+    vector<int> frames(framesCount, -1);
+    int faults = 0;
+
+    for (int i = 0; i < refs.size(); i++) {
+        int r = refs[i];
+        bool hit = false;
+
+        // Check if already present
+        for (int f : frames) {
+            if (f == r) { hit = true; break; }
+        }
+
+        cout << left << setw(5) << r;
+
+        if (hit) {
+            printFrames(frames);
+            cout << "    NO  (Already in memory)\n";
+            continue;
+        }
+
+        faults++;
+
+        // Find empty frame
+        int emptyIndex = -1;
+        for (int j = 0; j < framesCount; j++) {
+            if (frames[j] == -1) {
+                emptyIndex = j;
+                break;
+            }
+        }
+
+        if (emptyIndex != -1) {
+            frames[emptyIndex] = r;
+            printFrames(frames);
+            cout << "    YES (Loaded into empty frame)\n";
+        } else {
+            // Find optimal replacement
+            int farthest = -1, replaceIndex = -1;
+
+            for (int j = 0; j < framesCount; j++) {
+                int nextUse = -1;
+
+                for (int k = i + 1; k < refs.size(); k++) {
+                    if (frames[j] == refs[k]) {
+                        nextUse = k;
                         break;
                     }
                 }
 
-                present.erase(victim);
-                present.insert(page);
-                q.push(page);
-            }
-        }
-
-        printFrames(frames);
-        cout << "\n\n";
-    }
-
-    cout << "Total FIFO Page Faults = " << faults << "\n";
-    return faults;
-}
-
-/* ======================== LRU ======================== */
-int simulateLRU(const vector<int>& refs, int frames_count) {
-    cout << "\n------------------------------------------------------------\n";
-    cout << "                 LRU PAGE REPLACEMENT                       \n";
-    cout << "------------------------------------------------------------\n";
-    cout << "Explanation: Removes the page that has not been used recently.\n\n";
-
-    vector<int> frames(frames_count, -1);
-    unordered_map<int, int> lastUsed;
-
-    int faults = 0;
-
-    for (int time = 0; time < refs.size(); time++) {
-        int page = refs[time];
-
-        cout << "Reference " << time + 1 << " -> Page " << page << "\n";
-
-        bool hit = false;
-        for (int f : frames) if (f == page) hit = true;
-
-        if (hit) {
-            cout << "Result: HIT (page used recently)\n";
-            lastUsed[page] = time;
-        } else {
-            faults++;
-            cout << "Result: PAGE FAULT\n";
-
-            bool placed = false;
-            for (int j = 0; j < frames_count; j++) {
-                if (frames[j] == -1) {
-                    frames[j] = page;
-                    lastUsed[page] = time;
-                    placed = true;
-                    cout << "Action: Page placed in an empty frame.\n";
+                if (nextUse == -1) { // never used again
+                    replaceIndex = j;
                     break;
                 }
+
+                if (nextUse > farthest) {
+                    farthest = nextUse;
+                    replaceIndex = j;
+                }
             }
 
-            if (!placed) {
-                int lruPage = -1, lruTime = INT_MAX;
+            int replaced = frames[replaceIndex];
+            frames[replaceIndex] = r;
 
-                for (int f : frames) {
-                    int t = lastUsed[f];
-                    if (t < lruTime) {
-                        lruTime = t;
-                        lruPage = f;
-                    }
-                }
-
-                cout << "Action: Evicted page " << lruPage 
-                     << " (least recently used).\n";
-
-                for (int j = 0; j < frames_count; j++) {
-                    if (frames[j] == lruPage) {
-                        frames[j] = page;
-                    }
-                }
-
-                lastUsed.erase(lruPage);
-                lastUsed[page] = time;
-            }
+            printFrames(frames);
+            cout << "    YES (Replaced Optimal: " << replaced << ")\n";
         }
-
-        printFrames(frames);
-        cout << "\n\n";
     }
 
-    cout << "Total LRU Page Faults = " << faults << "\n";
+    printLine();
+    cout << "Simulation Results (Optimal)\n";
+    printLine();
+    cout << "Total Page Faults: " << faults << "\n";
+    cout << "Total References : " << refs.size() << "\n";
+    cout << "Fault Rate       : " << fixed << setprecision(2)
+         << (faults * 100.0 / refs.size()) << "%\n\n";
+
+    cout << "Optimal Explanation:\n";
+    cout << "Optimal replacement uses future knowledge to replace the page\n";
+    cout << "that will not be used for the longest time. It gives the\n";
+    cout << "minimum possible number of page faults but cannot be\n";
+    cout << "implemented in real systems. It is used only for comparison.\n";
+
+    printLine();
+    cout << "End of Simulation.\n";
+    cout << "You may run another algorithm from the menu.\n";
+    printLine();
+
     return faults;
 }
 
-/* ====================== OPTIMAL ====================== */
-int simulateOptimal(const vector<int>& refs, int frames_count) {
-    cout << "\n------------------------------------------------------------\n";
-    cout << "                     OPTIMAL PAGE REPLACEMENT               \n";
-    cout << "------------------------------------------------------------\n";
-    cout << "Explanation: Replaces the page that will not be needed for the longest time.\n\n";
-
-    vector<int> frames(frames_count, -1);
-    int faults = 0;
-
-    for (int i = 0; i < refs.size(); i++) {
-        int page = refs[i];
-
-        cout << "Reference " << i + 1 << " -> Page " << page << "\n";
-
-        bool hit = false;
-        for (int f : frames) if (f == page) hit = true;
-
-        if (hit) {
-            cout << "Result: HIT (page already in memory)\n";
-        } else {
-            faults++;
-            cout << "Result: PAGE FAULT\n";
-
-            bool placed = false;
-            for (int j = 0; j < frames_count; j++) {
-                if (frames[j] == -1) {
-                    frames[j] = page;
-                    placed = true;
-                    cout << "Action: Page placed in an empty frame.\n";
-                    break;
-                }
-            }
-
-            if (!placed) {
-                int victimIndex = -1;
-                int farthestUse = -1;
-
-                for (int j = 0; j < frames_count; j++) {
-                    int current = frames[j];
-                    int nextUse = INT_MAX;
-
-                    for (int k = i + 1; k < refs.size(); k++) {
-                        if (refs[k] == current) {
-                            nextUse = k;
-                            break;
-                        }
-                    }
-
-                    if (nextUse > farthestUse) {
-                        farthestUse = nextUse;
-                        victimIndex = j;
-                    }
-                }
-
-                int victim = frames[victimIndex];
-                cout << "Action: Evicted page " << victim 
-                     << " (used farthest in the future).\n";
-
-                frames[victimIndex] = page;
-            }
-        }
-
-        printFrames(frames);
-        cout << "\n\n";
-    }
-
-    cout << "Total OPTIMAL Page Faults = " << faults << "\n";
-    return faults;
-}
-
-/* ========================== MAIN ========================= */
+// ------------------------------------------------------------
+// Main Program Menu
+// ------------------------------------------------------------
 int main() {
-    cout << "============================================================\n";
-    cout << "            PAGE REPLACEMENT ALGORITHM SIMULATOR            \n";
-    cout << "============================================================\n";
-    cout << "This program demonstrates how memory pages are loaded and\n";
-    cout << "replaced under different page replacement strategies.\n";
-    cout << "You can run FIFO, LRU, or OPTIMAL multiple times using menu.\n\n";
+    while (true) {
+        printLine();
+        cout << "              PAGE REPLACEMENT ALGORITHM SIMULATOR\n";
+        printLine();
+        cout << "This program allows you to experiment with different\n";
+        cout << "page replacement strategies. You can provide your own\n";
+        cout << "reference string and frame size, and observe how each\n";
+        cout << "algorithm manages memory.\n\n";
 
-    int n;
-    cout << "Enter the length of the reference string: ";
-    cin >> n;
+        cout << "Please choose an algorithm to simulate:\n";
+        cout << "1. FIFO (First-In First-Out)\n";
+        cout << "2. LRU  (Least Recently Used)\n";
+        cout << "3. Optimal Page Replacement\n";
+        cout << "4. Exit\n\n";
 
-    vector<int> refs(n);
-    cout << "Enter " << n << " page references: ";
-    for (int i = 0; i < n; i++) cin >> refs[i];
-
-    int frames;
-    cout << "Enter number of frames available in memory: ";
-    cin >> frames;
-
-    int choice;
-
-    do {
-        cout << "\n---------------------- MENU ----------------------\n";
-        cout << "1. Simulate FIFO\n";
-        cout << "2. Simulate LRU\n";
-        cout << "3. Simulate OPTIMAL\n";
-        cout << "4. Run All Strategies\n";
-        cout << "5. Exit Program\n";
-        cout << "--------------------------------------------------\n";
         cout << "Enter your choice: ";
+        int choice;
         cin >> choice;
 
-        switch (choice) {
-            case 1: simulateFIFO(refs, frames); break;
-            case 2: simulateLRU(refs, frames); break;
-            case 3: simulateOptimal(refs, frames); break;
-            case 4:
-                simulateFIFO(refs, frames);
-                simulateLRU(refs, frames);
-                simulateOptimal(refs, frames);
-                break;
-            case 5:
-                cout << "Program terminated.\n";
-                break;
-            default:
-                cout << "Invalid choice. Please try again.\n";
-        }
+        if (choice == 4) break;
 
-    } while (choice != 5);
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        printLine();
 
+        cout << "Enter the reference string (space-separated): ";
+        string input;
+        getline(cin, input);
+
+        stringstream ss(input);
+        vector<int> refs;
+        int num;
+        while (ss >> num) refs.push_back(num);
+
+        cout << "Enter the number of frames: ";
+        int frames;
+        cin >> frames;
+
+        printLine();
+
+        if (choice == 1) simulateFIFO(refs, frames);
+        else if (choice == 2) simulateLRU(refs, frames);
+        else if (choice == 3) simulateOptimal(refs, frames);
+        else cout << "Invalid option.\n";
+    }
+
+    cout << "\nThank you for using the simulator.\n";
     return 0;
 }
+
 
 ```
